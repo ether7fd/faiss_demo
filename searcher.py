@@ -4,7 +4,7 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from config import DOCUMENTS_PATH, INDEX_PATH, MODEL_NAME, QUERY_PREFIX
+from config import DOCUMENTS_PATH, INDEX_PATH, MODEL_NAME, QUERY_PREFIX, SCORE_THRESHOLD
 
 
 def search(
@@ -24,7 +24,7 @@ def search(
     return [
         (documents[idx], float(score))
         for score, idx in zip(scores[0], indices[0])
-        if idx != -1
+        if idx != -1 and score >= SCORE_THRESHOLD
     ]
 
 
@@ -56,7 +56,11 @@ def main():
 
         results = search(query, model, index, documents)
 
-        print(f"\n「{query}」の検索結果（上位 {len(results)} 件）:")
+        if not results:
+            print(f"\n「{query}」に該当する文書が見つかりませんでした\n")
+            continue
+
+        print(f"\n「{query}」の検索結果（{len(results)} 件）:")
         print("-" * 60)
         for rank, (doc, score) in enumerate(results, 1):
             print(f"  {rank}. [スコア: {score:.4f}] {doc}")
