@@ -1,9 +1,11 @@
-import numpy as np
+import json
+
 import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from config import DATA_DIR, DOCUMENT_PREFIX, DOCUMENTS_PATH, INDEX_PATH, MODEL_NAME
 
-# サンプル文書データ
 SAMPLE_DOCUMENTS = [
     "Pythonは汎用プログラミング言語で、機械学習やデータ分析に広く使われています",
     "JavaScriptはウェブブラウザ上で動作するプログラミング言語です",
@@ -28,75 +30,28 @@ SAMPLE_DOCUMENTS = [
 ]
 
 
-def build_index(
-    model: SentenceTransformer, documents: list[str]
-) -> tuple[faiss.IndexFlatIP, np.ndarray]:
-    """文書をエンベディングしてFAISSインデックスを構築する"""
-    print(f"  {len(documents)} 件の文書をエンベディング中...")
-    prefixed = [f"検索文書: {doc}" for doc in documents]
+def main():
+    print("=== インデックス作成 ===\n")
+
+    print("[1/3] モデルを読み込み中...")
+    model = SentenceTransformer(MODEL_NAME)
+
+    print("[2/3] 文書をエンベディング中...")
+    prefixed = [f"{DOCUMENT_PREFIX}{doc}" for doc in SAMPLE_DOCUMENTS]
     embeddings = model.encode(prefixed, normalize_embeddings=True)
     embeddings = np.array(embeddings, dtype=np.float32)
 
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dimension)
+    print("[3/3] インデックスを保存中...")
+    index = faiss.IndexFlatIP(embeddings.shape[1])
     index.add(embeddings)
 
-    print(f"  インデックス構築完了 (次元数: {dimension}, 文書数: {index.ntotal})")
-    return index, embeddings
+    DATA_DIR.mkdir(exist_ok=True)
+    faiss.write_index(index, str(INDEX_PATH))
+    DOCUMENTS_PATH.write_text(json.dumps(SAMPLE_DOCUMENTS, ensure_ascii=False, indent=2))
 
-
-def search(
-    query: str,
-    model: SentenceTransformer,
-    index: faiss.IndexFlatIP,
-    documents: list[str],
-    top_k: int = 5,
-) -> list[tuple[str, float]]:
-    """クエリに類似した文書を検索する"""
-    query_embedding = model.encode([f"検索クエリ: {query}"], normalize_embeddings=True)
-    query_embedding = np.array(query_embedding, dtype=np.float32)
-
-    scores, indices = index.search(query_embedding, top_k)
-
-    results = []
-    for score, idx in zip(scores[0], indices[0]):
-        if idx != -1:
-            results.append((documents[idx], float(score)))
-    return results
-
-
-def main():
-    print("=== FAISS テキスト検索デモ ===\n")
-
-    print("[1/2] モデルを読み込み中...")
-    model = SentenceTransformer("cl-nagoya/ruri-v3-70m")
-
-    print("[2/2] インデックスを構築中...")
-    index, _ = build_index(model, SAMPLE_DOCUMENTS)
-
-    print("\n準備完了！検索クエリを入力してください（終了: q）\n")
-
-    while True:
-        try:
-            query = input("検索> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n終了します。")
-            break
-
-        if not query:
-            continue
-        if query.lower() == "q":
-            print("終了します。")
-            break
-
-        results = search(query, model, index, SAMPLE_DOCUMENTS)
-
-        print(f"\n「{query}」の検索結果（上位 {len(results)} 件）:")
-        print("-" * 60)
-        for rank, (doc, score) in enumerate(results, 1):
-            print(f"  {rank}. [スコア: {score:.4f}] {doc}")
-        print("-" * 60)
-        print()
+    print(f"\n完了！ {index.ntotal} 件の文書をインデックス化しました")
+    print(f"  インデックス: {INDEX_PATH}")
+    print(f"  文書リスト:   {DOCUMENTS_PATH}")
 
 
 if __name__ == "__main__":
